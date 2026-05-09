@@ -31,3 +31,4 @@
 ## Copyright Notice
 
 * The open-source components of this project are licensed under the **GPLv3** . Users are permitted to freely study, modify, and engage in non-commercial DIY activities within the terms of the license.** ****Unauthorized** commercial use of the open-source content is strictly prohibited, and violators will be held legally accountable.
+# Emobot
