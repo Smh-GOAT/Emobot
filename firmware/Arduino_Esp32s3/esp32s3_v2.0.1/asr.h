@@ -1,8 +1,9 @@
 #ifndef ASR_H
 #define ASR_H
 
-#include <WebSocketsClient.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include "common.h"
 #include "audio.h"
 #include "act.h"
@@ -11,6 +12,8 @@
 #define RECORD_TIME 10
 #define MAX_SILENCE_TIME 2
 #define BUFFER_SIZE (8 * 1024)
+#define WAV_HEADER_SIZE 44
+#define ASR_AUDIO_FILE "/asr_input.wav"
 
 class AsrClient {
 
@@ -23,41 +26,22 @@ public:
     bool ASR();
 
 private:
-    const char* host = "openspeech.bytedance.com";
-    const char* asr_url = "/api/v2/asr";
-    const char* appid = APPID;
-    const char* token = TOKEN;
-    const char* cluster = "volcengine_streaming_common";
-    const char* audio_format = "raw";
+    const char* api_url = ASR_API_URL;
+    const char* api_key = ASR_API_KEY;
+    const char* model = ASR_MODEL;
     const int sample_rate = 16000;
     const int bits = 16;
     const int channel = 1;
-    const int success_code = 1000;
-    const char* language = "zh-CN";
-    const char* uid = "388808087185088";
-    const char* workflow = "audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate";
-    bool messageReceived = false;
-    bool lastMessageReceived = false;
-    bool voice_detected = false;
+    const char* language = "zh";
+    const bool enable_itn = false;
     String asr_result = "";
 
-    WebSocketsClient webSocket;
-
-    void handleWebSocketEvent(WStype_t type, uint8_t * payload, size_t length);
-    bool waitForMessage();
+    bool recordToWav();
+    bool transcribeWav();
     void blink_loop(uint32_t color = COLOR_BLUE);
-    void generateHeader(uint8_t* header,
-                        uint8_t version = PROTOCOL_VERSION,
-                        uint8_t messageType = CLIENT_FULL_REQUEST,
-                        uint8_t messageTypeSpecificFlags = NO_SEQUENCE,
-                        uint8_t serialMethod = JSON,
-                        uint8_t compressionType = NO_COMPRESSION,
-                        uint8_t reservedData = 0x00);
-    String constructRequest();
-    bool sendFullRequest();
-    bool sendAudioRequest(uint8_t *data, size_t length, bool isLast);
-    String parseResponse(uint8_t* payload, size_t length);
-    String parseJson(String jsonString);
+    void writeWavHeader(File& file, uint32_t pcm_bytes);
+    String encodeWavAsDataUrl();
+    String parseResponse(const String& jsonString);
 };
 
-#endif 
+#endif

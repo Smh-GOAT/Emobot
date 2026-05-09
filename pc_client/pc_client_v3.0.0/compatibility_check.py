@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Compatibility check script for Desk-Emoji PC Client
-Ensures Python 3.13 compatibility and required dependencies
+Ensures Python 3.11+ compatibility, tkinter support, and required dependencies
 """
 
 import sys
@@ -63,6 +63,23 @@ def check_required_packages():
     
     return missing_packages
 
+def check_tkinter_support():
+    """Check whether the Python build includes tkinter support"""
+    print("\nChecking GUI toolkit support...")
+
+    try:
+        importlib.import_module("tkinter")
+        print("✓ tkinter is available")
+        return True
+    except ImportError:
+        print("✗ tkinter is not available in this Python installation.")
+        if platform.system() == "Darwin":
+            version = sys.version_info
+            print(f"  Homebrew Python hint: brew install python-tk@{version.major}.{version.minor}")
+        else:
+            print("  Please install tkinter support for your Python distribution.")
+        return False
+
 def check_system_compatibility():
     """Check system-specific compatibility"""
     print("\nChecking system compatibility...")
@@ -101,7 +118,7 @@ def install_missing_packages(missing_packages):
 
 def main():
     """Main compatibility check function"""
-    print("Desk-Emoji PC Client - Python 3.13 Compatibility Check")
+    print("Desk-Emoji PC Client - Python Compatibility Check")
     print("=" * 60)
     
     # Check Python version
@@ -110,6 +127,10 @@ def main():
     
     # Check system compatibility
     check_system_compatibility()
+
+    # Check tkinter support before importing GUI packages such as customtkinter
+    if not check_tkinter_support():
+        sys.exit(1)
     
     # Check required packages
     missing_packages = check_required_packages()
@@ -128,7 +149,7 @@ def main():
     
     print("\n" + "=" * 60)
     print("✓ All compatibility checks passed!")
-    print("✓ Desk-Emoji PC Client is ready to run with Python 3.13")
+    print("✓ Desk-Emoji PC Client is ready to run with Python 3.11+")
     print("\nYou can now run the application with:")
     print("python main.py")
 

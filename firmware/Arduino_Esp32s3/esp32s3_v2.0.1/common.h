@@ -17,6 +17,12 @@
 
 #define APPID ""
 #define TOKEN ""
+#define ASR_API_KEY ""
+// International (Singapore): https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+// US (Virginia): https://dashscope-us.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+#define ASR_API_URL "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+// US region model: qwen3-asr-flash-us
+#define ASR_MODEL "qwen3-asr-flash"
 
 // Constants from Python code
 #define PROTOCOL_VERSION 0x01

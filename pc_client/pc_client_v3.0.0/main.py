@@ -325,8 +325,8 @@ class App(ctk.CTk):
         self.volcano_api_connect_button = ctk.CTkButton(self.volcano_api_tab, text="连接", command=self.volcano_connect_button_event)
         self.volcano_api_connect_button.grid(row=2, column=1, padx=20, pady=10)
 
-        self.api_tabview.add("OpenAI")
-        self.openai_api_tab = self.api_tabview.tab("OpenAI")
+        self.api_tabview.add("API")
+        self.openai_api_tab = self.api_tabview.tab("API")
         self.openai_api_tab.grid_columnconfigure(0, weight=1)
         self.openai_api_tab.grid_columnconfigure(1, weight=6)
 
@@ -467,7 +467,7 @@ class App(ctk.CTk):
             return response
         except Exception as e:
             error(e, "Chat Failed!")
-            return "OpenAI 连接失败！请检查 API 配置"
+            return "API 连接失败！请检查模型与接口配置"
 
     def send_response(self, cmd):
         print(cmd)
@@ -542,15 +542,21 @@ class App(ctk.CTk):
     def volcano_connect_button_event(self):
         self.save_api_key()
         if llm.connect():
+            self.api_connected = True
+            self.checked = False
             self.openai_api_connect_flag_label.configure(text="连接成功", text_color="green")
         else:
+            self.api_connected = False
             self.openai_api_connect_flag_label.configure(text="连接失败", text_color="red")
 
     def openai_connect_button_event(self):
         self.save_api_key()
         if llm.connect():
+            self.api_connected = True
+            self.checked = False
             self.openai_api_connect_flag_label.configure(text="连接成功", text_color="green")
         else:
+            self.api_connected = False
             self.openai_api_connect_flag_label.configure(text="连接失败", text_color="red")
 
     def firmware_button_event(self):
@@ -601,8 +607,10 @@ class App(ctk.CTk):
     def check_connections(self):
         if not self.checked:
             if self.api_connected or llm.connect():
+                self.api_connected = True
                 self.print_textbox("API 连接成功")
             else:
+                self.api_connected = False
                 self.print_textbox("API 未连接")
 
             if self.usb_connected:
@@ -612,6 +620,7 @@ class App(ctk.CTk):
             else:
                 self.print_textbox(f"蓝牙 或 USB 未连接")
             self.print_textbox("\n")
+            self.checked = True
 
     def import_firmware(self):
         file_path = tk.filedialog.askopenfilename(filetypes=[("Binary Files", "*.bin")])

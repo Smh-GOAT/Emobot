@@ -9,3 +9,4 @@ backup/
 *.spec
 *.zip
 Pipfile*
+.omx/

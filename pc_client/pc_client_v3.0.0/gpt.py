@@ -23,13 +23,13 @@ class GPT(BaseLLM):
                 api_key = self.api_key
             )
             self.client.models.list()
-            logger.info("Connect to OpenAI API Success!")
+            logger.info("Connect to LLM API Success!")
             return True
         except Exception as e:
-            error(e, "Connect to OpenAI API Failed! Please check the API configuration")
+            error(e, "Connect to LLM API Failed! Please check the API configuration")
             return False
 
-    def chat(self, message='', model="gpt-4o-mini", temperature=0):
+    def chat(self, message='', model="qwen3.6-plus", temperature=0):
         messages = [{"role": "system", "content": llm_role},
                     {"role": "user", "content": llm_prompt + message}]
         response = self.client.chat.completions.create(
@@ -39,7 +39,7 @@ class GPT(BaseLLM):
         )
         return response.choices[0].message.content.strip()
 
-    def speech(self, model="whisper-1", audio_path=""):
+    def speech(self, model="qwen3-asr-flash", audio_path=""):
         audio_file= open(audio_path, "rb")
         transcription = self.client.audio.transcriptions.create(
             model=model,

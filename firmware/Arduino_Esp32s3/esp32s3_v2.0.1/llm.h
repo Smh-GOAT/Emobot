@@ -19,7 +19,7 @@ public:
 private:
     const char* API_KEY = "";
     const char* API_URL = "";
-    const char* MODEL = "";
+    const char* MODEL = "qwen3.6-plus";
 
     const char* HISTORY_FILE = "/chat_history.json";
     const uint8_t MAX_MEM_LEN = 10;

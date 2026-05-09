@@ -1,312 +1,302 @@
 #include "asr.h"
 
+namespace {
+const char BASE64_TABLE[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+}
 
 AsrClient::AsrClient() {
 }
 
 void AsrClient::connect() {
-    if (!webSocket.isConnected()) {
-        webSocket.beginSSL(host, 443, asr_url);
-        webSocket.setExtraHeaders(("Authorization: Bearer; " + String(token)).c_str());
-        
-        webSocket.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
-            this->handleWebSocketEvent(type, payload, length);
-        });
-
-        // Wait until connected
-        unsigned long startTime = millis();
-        while (!webSocket.isConnected() && millis() - startTime < 5000) {
-            blink_loop();
-        }
-    }
+    // Qwen ASR is called over one-shot HTTPS requests, so no persistent socket is needed.
 }
 
 void AsrClient::disconnect() {
-    if (webSocket.isConnected()) {
-        webSocket.disconnect();
-        // Wait until disconnected
-        unsigned long startTime = millis();
-        while (webSocket.isConnected() && millis() - startTime < 3000) {
-            loop();
-        }
-    }
-}
-
-void AsrClient::handleWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
-    String result;
-    switch(type) {
-        case WStype_CONNECTED:
-            log_info("ASR webSocket connected");
-            break;
-        case WStype_DISCONNECTED:
-            log_info("ASR webSocket disconnected");
-            if (!lastMessageReceived) {
-                set_led(COLOR_BLACK);
-            }
-            break;
-        case WStype_BIN:
-            result = parseResponse(payload, length);
-            log_debug("%s", result.c_str());
-            messageReceived = true;
-            if (lastMessageReceived) {
-                asr_result = parseJson(result);
-            }
-            webSocket.loop();
-            break;
-        case WStype_ERROR:
-            log_error("ASR webSocket Error.");
-            break;
-        case WStype_PING:
-            log_debug("ASR Ping.");
-            break;
-        case WStype_PONG:
-            log_debug("ASR Pong.");
-            break;
-    }
+    // No persistent ASR connection to tear down.
 }
 
 void AsrClient::loop(int delay_time) {
-    if (webSocket.isConnected()) {
-        webSocket.loop();
-        delay(delay_time);
-    }
+    (void)delay_time;
 }
 
 void AsrClient::blink_loop(uint32_t color) {
-    webSocket.loop();
     blink_led(color);
-}
-
-bool AsrClient::waitForMessage() {
-    unsigned long waitStartTime = millis();
-    while (!messageReceived) {
-        loop();
-        if (millis() - waitStartTime > 3000) {
-            log_error("ASR message wait timeout");
-            set_led(COLOR_BLACK);
-            return false;
-        }
-    }
-    messageReceived = false;
-    return true;
-}
-
-void AsrClient::generateHeader(uint8_t* header,
-                               uint8_t version,
-                               uint8_t messageType,
-                               uint8_t messageTypeSpecificFlags,
-                               uint8_t serialMethod,
-                               uint8_t compressionType,
-                               uint8_t reservedData) {
-    header[0] = (version << 4) | DEFAULT_HEADER_SIZE;
-    header[1] = (messageType << 4) | messageTypeSpecificFlags;
-    header[2] = (serialMethod << 4) | compressionType;
-    header[3] = reservedData;
-}
-
-String AsrClient::constructRequest() {
-    StaticJsonDocument<1024> doc;
-    
-    JsonObject app = doc["app"].to<JsonObject>();
-    app["appid"] = appid;
-    app["cluster"] = cluster;
-    app["token"] = token;
-
-    JsonObject user = doc["user"].to<JsonObject>();
-    user["uid"] = uid;
-
-    JsonObject audio = doc["audio"].to<JsonObject>();
-    audio["format"] = audio_format;
-    audio["rate"] = sample_rate;
-    audio["language"] = language;
-    audio["bits"] = bits;
-    audio["channel"] = channel;
-    audio["codec"] = "raw";
-
-    JsonObject request = doc["request"].to<JsonObject>();
-    request["reqid"] = generate_uuid();
-    request["nbest"] = 1;
-    request["workflow"] = workflow;
-    request["show_language"] = false;
-    request["show_utterances"] = false;
-    request["result_type"] = "full";
-    request["sequence"] = 1;
-
-    String jsonString;
-    serializeJson(doc, jsonString);
-    return jsonString;
-}
-
-bool AsrClient::sendFullRequest() {
-    String jsonString = constructRequest();
-    uint8_t* payloadStr = (uint8_t*)jsonString.c_str();
-
-    // Calculate total size needed
-    size_t payloadLength = strlen((char*)payloadStr);
-    size_t totalLength = 4 + 4 + payloadLength;  // header + payload size + json
-    
-    // Construct full request
-    uint8_t* fullRequest = new uint8_t[totalLength];
-    uint8_t header[4];
-    generateHeader(header);
-    memcpy(fullRequest, header, 4);
-    fullRequest[4] = (payloadLength >> 24) & 0xFF;
-    fullRequest[5] = (payloadLength >> 16) & 0xFF;
-    fullRequest[6] = (payloadLength >> 8) & 0xFF;
-    fullRequest[7] = payloadLength & 0xFF;
-    memcpy(fullRequest + 8, payloadStr, payloadLength);
-
-    log_debug("--------------------------- send ASR full request ---------------------------");
-    log_debug("ASR full header bytes: %s", get_byte_str(fullRequest, 8).c_str());
-    log_debug("ASR payload string: %s", jsonString.c_str());
-
-    if (!webSocket.sendBIN(fullRequest, totalLength)) {
-        delete[] fullRequest;
-        return false;
-    } else {
-        delete[] fullRequest;
-        loop();
-        return true;
-    }
-}
-
-bool AsrClient::sendAudioRequest(uint8_t *data, size_t length, bool isLast) {
-    // Construct audio request
-    uint8_t header[4];
-    generateHeader(header, 
-                    PROTOCOL_VERSION,
-                    CLIENT_AUDIO_ONLY_REQUEST,
-                    isLast ? NEG_SEQUENCE : NO_SEQUENCE);
-
-    uint8_t* audioRequest = new uint8_t[8 + length];
-    memcpy(audioRequest, header, 4);
-
-    audioRequest[4] = (length >> 24) & 0xFF;
-    audioRequest[5] = (length >> 16) & 0xFF;
-    audioRequest[6] = (length >> 8) & 0xFF;
-    audioRequest[7] = length & 0xFF;
-
-    memcpy(audioRequest + 8, data, length);
-
-    log_debug("--------------------------- send ASR audio request ---------------------------");
-    log_debug("ASR audio header bytes: %s", get_byte_str(audioRequest, 8).c_str());
-
-    if (!webSocket.sendBIN(audioRequest, 8 + length)) {
-        delete[] audioRequest;
-        return false;
-    } else {
-        delete[] audioRequest;
-        loop();
-        return true;
-    }
 }
 
 bool AsrClient::ASR() {
     asr_result = "";
     set_led(COLOR_RED, 10);
 
-    if (!sendFullRequest()) {
-        log_error("Send full request Failed!");
-        return false;
-    }
-    if (!waitForMessage()) {
+    if (strlen(api_url) == 0 || strlen(api_key) == 0 || strlen(model) == 0) {
+        log_error("Qwen ASR config is incomplete. Please set ASR_API_URL, ASR_API_KEY, and ASR_MODEL.");
         return false;
     }
 
-    const size_t samples_needed = RECORD_TIME * SAMPLE_RATE;
+    if (!recordToWav()) {
+        return false;
+    }
+
+    return transcribeWav();
+}
+
+bool AsrClient::recordToWav() {
+    if (FFat.exists(ASR_AUDIO_FILE)) {
+        FFat.remove(ASR_AUDIO_FILE);
+    }
+
+    File file = FFat.open(ASR_AUDIO_FILE, FILE_WRITE);
+    if (!file) {
+        log_error("Failed to open ASR audio file for writing");
+        return false;
+    }
+
+    uint8_t placeholder_header[WAV_HEADER_SIZE] = {0};
+    if (file.write(placeholder_header, WAV_HEADER_SIZE) != WAV_HEADER_SIZE) {
+        log_error("Failed to write placeholder WAV header");
+        file.close();
+        return false;
+    }
+
+    const size_t max_samples = RECORD_TIME * sample_rate;
     size_t samples_recorded = 0;
+    uint32_t pcm_bytes_written = 0;
+    unsigned long silence_start_time = 0;
+    bool is_silent = false;
+    bool voice_detected = false;
     int16_t* buffer = new int16_t[BUFFER_SIZE];
-    unsigned long silenceStartTime = 0;
-    bool isSilent = false;
-    voice_detected = false;
 
-    // static unsigned long last_smile_time = 0;
-    while (samples_recorded < samples_needed) {
-        // if (millis() - last_smile_time > 2000) {
-        //     async_random_smile_act();
-        //     last_smile_time = millis();
-        // }
-        size_t samples_to_read = std::min((size_t)BUFFER_SIZE, samples_needed - samples_recorded);
+    if (!buffer) {
+        log_error("Failed to allocate ASR audio buffer");
+        file.close();
+        return false;
+    }
+
+    while (samples_recorded < max_samples) {
+        size_t remaining = max_samples - samples_recorded;
+        size_t samples_to_read = remaining < BUFFER_SIZE ? remaining : BUFFER_SIZE;
+
         record(buffer, samples_to_read);
         enhanceVoice(buffer, samples_to_read);
-
-        if (samples_to_read < BUFFER_SIZE) {
-            lastMessageReceived = true;
-        } else {
-            lastMessageReceived = false;
-        }
 
         size_t mean = calculate_mean(buffer, samples_to_read);
         if (mean > SOUND_THRESHOLD) {
             set_led(COLOR_RED, 100);
-            isSilent = false;
-            silenceStartTime = 0;
+            voice_detected = true;
+            is_silent = false;
+            silence_start_time = 0;
         } else {
             set_led(COLOR_RED, 10);
-            if (!isSilent) {
-                isSilent = true;
-                silenceStartTime = millis();
-            } else if ((!voice_detected && samples_recorded > SAMPLE_RATE * 3) || samples_recorded > SAMPLE_RATE * MAX_WAIT_TIME) {
-                lastMessageReceived = true;
+            if (voice_detected) {
+                if (!is_silent) {
+                    is_silent = true;
+                    silence_start_time = millis();
+                } else if (millis() - silence_start_time > MAX_SILENCE_TIME * 1000) {
+                    break;
+                }
+            } else if (samples_recorded > sample_rate * 3) {
+                break;
             }
         }
 
-        if (!sendAudioRequest((uint8_t*)buffer, samples_to_read * sizeof(int16_t), lastMessageReceived)) {
-            log_error("Send audio request Failed!");
+        size_t bytes_to_write = samples_to_read * sizeof(int16_t);
+        if (file.write((uint8_t*)buffer, bytes_to_write) != bytes_to_write) {
+            log_error("Failed to write ASR audio samples");
+            delete[] buffer;
+            file.close();
             return false;
         }
-        if (!waitForMessage()) {
-            return false;
-        }
+
+        pcm_bytes_written += bytes_to_write;
         samples_recorded += samples_to_read;
-        if (lastMessageReceived) {
-            break;
-        }
     }
 
     delete[] buffer;
+
+    if (!voice_detected || pcm_bytes_written == 0) {
+        log_info("No speech detected, skipping ASR request");
+        file.close();
+        FFat.remove(ASR_AUDIO_FILE);
+        return false;
+    }
+
+    file.seek(0);
+    writeWavHeader(file, pcm_bytes_written);
+    file.close();
     return true;
 }
 
-String AsrClient::parseResponse(uint8_t* payload, size_t length) {
-    uint8_t protocol_version = payload[0] >> 4;
-    uint8_t header_size = payload[0] & 0x0F;
-    uint8_t message_type = payload[1] >> 4;
-    uint8_t message_type_specific_flags = payload[1] & 0x0F;
-    uint8_t serialization_method = payload[2] >> 4;
-    uint8_t reserved = payload[3];
-    uint8_t* header_extensions = payload + 4;
-    uint8_t* payload_data = payload + (header_size * 4);
+void AsrClient::writeWavHeader(File& file, uint32_t pcm_bytes) {
+    uint8_t header[WAV_HEADER_SIZE] = {0};
+    uint32_t chunk_size = 36 + pcm_bytes;
+    uint32_t byte_rate = sample_rate * channel * bits / 8;
+    uint16_t block_align = channel * bits / 8;
 
-    String payload_msg = "";
+    memcpy(header, "RIFF", 4);
+    header[4] = chunk_size & 0xFF;
+    header[5] = (chunk_size >> 8) & 0xFF;
+    header[6] = (chunk_size >> 16) & 0xFF;
+    header[7] = (chunk_size >> 24) & 0xFF;
+    memcpy(header + 8, "WAVEfmt ", 8);
+    header[16] = 16;
+    header[20] = 1;
+    header[22] = channel & 0xFF;
+    header[23] = (channel >> 8) & 0xFF;
+    header[24] = sample_rate & 0xFF;
+    header[25] = (sample_rate >> 8) & 0xFF;
+    header[26] = (sample_rate >> 16) & 0xFF;
+    header[27] = (sample_rate >> 24) & 0xFF;
+    header[28] = byte_rate & 0xFF;
+    header[29] = (byte_rate >> 8) & 0xFF;
+    header[30] = (byte_rate >> 16) & 0xFF;
+    header[31] = (byte_rate >> 24) & 0xFF;
+    header[32] = block_align & 0xFF;
+    header[33] = (block_align >> 8) & 0xFF;
+    header[34] = bits & 0xFF;
+    header[35] = (bits >> 8) & 0xFF;
+    memcpy(header + 36, "data", 4);
+    header[40] = pcm_bytes & 0xFF;
+    header[41] = (pcm_bytes >> 8) & 0xFF;
+    header[42] = (pcm_bytes >> 16) & 0xFF;
+    header[43] = (pcm_bytes >> 24) & 0xFF;
 
-    if (message_type == SERVER_FULL_RESPONSE) {
-        payload_msg = String((char*)(payload_data + 4));
-
-    } else if (message_type == SERVER_ACK || message_type == SERVER_ERROR_RESPONSE) {
-        payload_msg = String((char*)(payload_data + 8));
-        // Check if payload_msg contains "result" key and set voice_detected flag
-        if (payload_msg.indexOf("\"result\"") != -1) {
-            voice_detected = true;
-        }
-    } else {
-        log_error("undefined message type: 0x%X", message_type);
-    }
-    return payload_msg;
+    file.write(header, WAV_HEADER_SIZE);
 }
 
-String AsrClient::parseJson(String jsonString) {
-    StaticJsonDocument<1024> doc;
-    DeserializationError error = deserializeJson(doc, jsonString);
-    if (!error || doc.containsKey("result")) {
-        JsonArray results = doc["result"];
-        if (results.size() > 0) {
-            JsonObject result = results[0];
-            if (result.containsKey("text")) {
-                String text = result["text"].as<String>();
-                return text;
-            }
+String AsrClient::encodeWavAsDataUrl() {
+    File file = FFat.open(ASR_AUDIO_FILE, FILE_READ);
+    if (!file) {
+        log_error("Failed to open recorded WAV file");
+        return "";
+    }
+
+    const char* prefix = "data:audio/wav;base64,";
+    size_t estimated_length = strlen(prefix) + (((file.size() + 2) / 3) * 4);
+    String data_url;
+    data_url.reserve(estimated_length);
+    data_url = prefix;
+
+    uint8_t buffer[768];
+    uint8_t carry[2] = {0};
+    size_t carry_len = 0;
+
+    while (file.available()) {
+        size_t bytes_read = file.read(buffer + carry_len, sizeof(buffer) - carry_len);
+        size_t total = carry_len + bytes_read;
+        size_t encode_len = total - (total % 3);
+
+        for (size_t i = 0; i < encode_len; i += 3) {
+            char block[5];
+            block[0] = BASE64_TABLE[(buffer[i] >> 2) & 0x3F];
+            block[1] = BASE64_TABLE[((buffer[i] & 0x03) << 4) | ((buffer[i + 1] >> 4) & 0x0F)];
+            block[2] = BASE64_TABLE[((buffer[i + 1] & 0x0F) << 2) | ((buffer[i + 2] >> 6) & 0x03)];
+            block[3] = BASE64_TABLE[buffer[i + 2] & 0x3F];
+            block[4] = '\0';
+            data_url += block;
         }
+
+        carry_len = total - encode_len;
+        if (carry_len > 0) {
+            memcpy(carry, buffer + encode_len, carry_len);
+            memcpy(buffer, carry, carry_len);
+        }
+    }
+
+    if (carry_len == 1) {
+        char block[5];
+        block[0] = BASE64_TABLE[(buffer[0] >> 2) & 0x3F];
+        block[1] = BASE64_TABLE[(buffer[0] & 0x03) << 4];
+        block[2] = '=';
+        block[3] = '=';
+        block[4] = '\0';
+        data_url += block;
+    } else if (carry_len == 2) {
+        char block[5];
+        block[0] = BASE64_TABLE[(buffer[0] >> 2) & 0x3F];
+        block[1] = BASE64_TABLE[((buffer[0] & 0x03) << 4) | ((buffer[1] >> 4) & 0x0F)];
+        block[2] = BASE64_TABLE[(buffer[1] & 0x0F) << 2];
+        block[3] = '=';
+        block[4] = '\0';
+        data_url += block;
+    }
+
+    file.close();
+    return data_url;
+}
+
+bool AsrClient::transcribeWav() {
+    String audio_data_url = encodeWavAsDataUrl();
+    if (audio_data_url.isEmpty()) {
+        return false;
+    }
+
+    String payload;
+    payload.reserve(audio_data_url.length() + 256);
+    payload = "{\"model\":\"";
+    payload += model;
+    payload += "\",\"input\":{\"messages\":[{\"role\":\"user\",\"content\":[{\"audio\":\"";
+    payload += audio_data_url;
+    payload += "\"}]}]},\"parameters\":{\"asr_options\":{\"language\":\"";
+    payload += language;
+    payload += "\",\"enable_itn\":";
+    payload += (enable_itn ? "true" : "false");
+    payload += "}}}";
+
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    HTTPClient http;
+    if (!http.begin(client, api_url)) {
+        log_error("Failed to initialize Qwen ASR HTTP client");
+        return false;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String("Bearer ") + api_key);
+    http.setTimeout(20000);
+
+    int http_response_code = http.POST(payload);
+    if (http_response_code <= 0) {
+        log_error("Qwen ASR HTTP request failed: %d", http_response_code);
+        http.end();
+        return false;
+    }
+
+    String response_body = http.getString();
+    http.end();
+
+    asr_result = parseResponse(response_body);
+    if (FFat.exists(ASR_AUDIO_FILE)) {
+        FFat.remove(ASR_AUDIO_FILE);
+    }
+
+    if (asr_result.isEmpty()) {
+        log_error("Qwen ASR returned an empty transcript");
+        return false;
+    }
+
+    log_info("ASR: %s", asr_result.c_str());
+    return true;
+}
+
+String AsrClient::parseResponse(const String& jsonString) {
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, jsonString);
+    if (error) {
+        log_error("Failed to parse Qwen ASR response");
+        return "";
+    }
+
+    if (doc["output"]["choices"].is<JsonArray>() && doc["output"]["choices"].size() > 0) {
+        JsonArray content = doc["output"]["choices"][0]["message"]["content"].as<JsonArray>();
+        if (content.size() > 0 && content[0]["text"].is<String>()) {
+            return content[0]["text"].as<String>();
+        }
+    }
+
+    if (doc["message"].is<String>()) {
+        log_error("Qwen ASR error: %s", doc["message"].as<const char*>());
+    } else {
+        log_error("Unexpected Qwen ASR response format");
     }
     return "";
 }

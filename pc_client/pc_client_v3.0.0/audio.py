@@ -31,10 +31,21 @@ class Listener(object):
 class Speaker(object):
     def __init__(self, gpt=None):
         self.executor = ThreadPoolExecutor(max_workers=1)
-        pygame.mixer.init()
         self.gpt = gpt
+        self.audio_available = self._init_audio()
+
+    def _init_audio(self):
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            return True
+        except Exception as e:
+            error(e, "Audio playback is unavailable. Voice output will be disabled")
+            return False
 
     def _play_audio(self, audio_path):
+        if not self.audio_available:
+            return
         pygame.mixer.music.load(audio_path)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
@@ -43,7 +54,10 @@ class Speaker(object):
     def say(self, text="", voice="onyx", audio_path="output.mp3"):
         try:
             self.gpt.speak(text=text, voice=voice, audio_path=audio_path)
-            self.executor.submit(self._play_audio, audio_path)
+            if self.audio_available:
+                self.executor.submit(self._play_audio, audio_path)
+            else:
+                logger.info("Skipping audio playback because no output device is available.")
 
         except Exception as e:
             error(e, "Speak Failed")
