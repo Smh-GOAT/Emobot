@@ -1,35 +1,38 @@
-# Desk-Emoji
+# Emobot
 
-## 概述
+这是为当前 Emobot 制作保留下来的精简版本仓库。
 
-* 首款工业风桌面机器人，外形炫酷，可作桌搭摆件。
-* 极致性价比，百元实现千元级桌面机器人效果。
-* 具备2自由度云台，丰富的头部运动，是一款真正可动的桌面机器人。
-* 精心调校的 Emoji 表情动画和运动算法，流畅而生动，情绪价值拉满。
-* 可根据回复内容的情绪做出相应的动作反馈。
-* 支持手势识别互动。
-* 支持大模型语音对话。
+## 当前保留版本
 
-![img](doc/image/readme/photo1.png "photo1")
-![img](doc/image/readme/photo2.png "photo2")
-![img](doc/image/readme/main_rendergraph.png "main_rendergraph")
+- 上位机：`pc_client/pc_client_v3.0.0`
+- 固件：`firmware/Arduino_Esp32s3/esp32s3_v2.0.1`
 
-## 资源
+仓库中的历史客户端版本和旧固件版本都已移除，只保留当前 Emobot 需要的版本路径。
 
-* [B站视频](https://space.bilibili.com/3546754517567616)
-* [固件下载](https://gitee.com/ideamark/desk-emoji/releases)
-* [在线文档](https://gitee.com/ideamark/desk-emoji/tree/main/doc/zh)
+## 目录结构
 
-## 购买
+- `pc_client/pc_client_v3.0.0`：桌面控制软件
+- `firmware/Arduino_Esp32s3/esp32s3_v2.0.1`：ESP32-S3 固件
+- `doc/`：组装、烧录和软件说明
 
-* [淘宝店](https://m.tb.cn/h.TclZzcV4aOoAzmj)
-* [小红书](https://www.xiaohongshu.com/user/profile/6470bd26000000002a034397)
+## 启动上位机
 
-## 作者
+macOS 或 Linux：
 
-* 马克叔叔（Mark Yang）
-* 邮箱: mark.yang@ewen.ltd
+```bash
+cd pc_client/pc_client_v3.0.0
+./start.sh
+```
 
-## 版权声明
+Windows：
 
-* 本项目的开源内容遵循 **GPLv3 协议** ，允许用户在协议框架内自由学习、修改及进行非商业用途的 DIY 实践。 **未经授权** ，禁止将开源内容用于任何商业用途，否则将依法追究法律责任。
+- 打开 `pc_client/pc_client_v3.0.0`
+- 运行 `start.bat`
+
+## 固件目标
+
+当前维护目标仅为 ESP32-S3。音频、手势、OLED、舵机和联网能力都以 `esp32s3_v2.0.1` 这套硬件映射为准。
+
+## 许可证
+
+本仓库继续沿用上游 GPLv3 协议。
