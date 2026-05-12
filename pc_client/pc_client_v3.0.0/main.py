@@ -12,11 +12,32 @@ from common import *
 from connect import *
 from audio import *
 from gpt import *
+from agent_core import AgentCore, ChatRequest
+from agent_core.config import get_database_url
+from agent_core.memory import MemoryStore, run_migrations
 
 
 blt = BluetoothClient()
 ser = SerialClient()
 llm = GPT()
+
+
+def build_memory_store():
+    if not get_database_url():
+        logger.info("DATABASE_URL is not set; Agent Core memory is disabled.")
+        return None
+    try:
+        run_migrations()
+        store = MemoryStore()
+        store.healthcheck()
+        logger.info("Agent Core memory connected to PostgreSQL.")
+        return store
+    except Exception as e:
+        error(e, "Agent Core memory initialization failed; continuing without memory")
+        return None
+
+
+agent = AgentCore(llm, memory_store=build_memory_store())
 listener = Listener(llm)
 speaker = Speaker(llm)
 
@@ -460,14 +481,14 @@ class App(ctk.CTk):
 
     def chat(self, question):
         try:
-            if not question: return None, None
+            if not question: return None
             logger.info(f"You: {question}")
-            response = llm.chat(question)
-            logger.info(f"Bot: {response}")
+            response = agent.chat(ChatRequest(text=question))
+            logger.info(f"Bot: {response.to_payload()}")
             return response
         except Exception as e:
             error(e, "Chat Failed!")
-            return "API 连接失败！请检查模型与接口配置"
+            return agent.chat(ChatRequest(text=""))
 
     def send_response(self, cmd):
         print(cmd)
@@ -481,8 +502,10 @@ class App(ctk.CTk):
         self.send_response(cmd)
 
     def send_actions_cmd(self, cmd):
-        cmd = json.dumps({"actions": [cmd]})
-        self.send_response(cmd)
+        response = agent.action_payload(cmd)
+        if response.warnings:
+            logger.warning(f"Action validation warnings: {response.warnings}")
+        self.send_response(response.to_json())
 
     def chat_button_event(self):
         self.select_frame_by_name("chat")
@@ -574,12 +597,17 @@ class App(ctk.CTk):
     def __chat_LLM(self, question):
         self.print_textbox(f"You:\t{question}")
         response = self.chat(question)
-        answer = json.loads(response)["answer"]
+        if response is None:
+            return
+        if response.warnings:
+            logger.warning(f"Agent response warnings: {response.warnings}")
+        answer = response.answer
+        safe_response = response.to_json()
         self.print_textbox(f"Bot:\t{answer}\n")
+        threading.Thread(target=self.send_response, args=(safe_response,)).start()
         if bool(self.speaker_switch.get()):
             voice = self.voice_combobox.get()
             speaker.say(text=answer, voice=voice)
-        threading.Thread(target=self.send_response, args=(response,)).start()
 
     def chat_msg_event(self, event=None):
         question = self.chat_msg.get()

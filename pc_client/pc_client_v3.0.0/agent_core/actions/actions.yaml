@@ -1,0 +1,74 @@
+version: 1
+limits:
+  max_actions: 8
+  max_total_duration_ms: 8000
+  required_ending:
+    - head_center
+    - eye_blink
+aliases:
+  eye_angry: eye_anger
+  eye_surprised: eye_surprise
+eye:
+  - eye_blink
+  - eye_happy
+  - eye_sad
+  - eye_anger
+  - eye_surprise
+  - eye_left
+  - eye_right
+head:
+  - head_left
+  - head_right
+  - head_up
+  - head_down
+  - head_nod
+  - head_shake
+  - head_roll_left
+  - head_roll_right
+  - head_center
+timing:
+  - delay
+animation:
+  - heart
+  - calendar
+  - face_id
+  - cola
+  - laugh
+  - dumbbell
+  - skateboard
+  - battery
+  - basketball
+  - rugby
+  - alarm
+  - screen
+  - wifi
+  - youtube
+  - tv
+  - movie
+  - cat
+  - write
+  - phone
+  - sunny
+  - cloudy
+  - rainy
+  - windy
+  - snow
+  - beer
+  - walk
+  - shit
+  - cry
+  - puzzled
+  - football
+  - volleyball
+  - badminton
+  - rice
+  - gym
+  - boat
+  - thinking
+  - money
+  - wait
+  - plane
+  - rocket
+  - ok
+  - love
+
