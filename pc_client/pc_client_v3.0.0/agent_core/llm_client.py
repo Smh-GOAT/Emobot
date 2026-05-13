@@ -4,7 +4,31 @@ from openai import OpenAI
 
 from common import BaseLLM, error, logger
 from .model_router import get_model_route
-from .prompts import LLM_ACTION_PROMPT, LLM_ROLE_PROMPT
+from .prompt_loader import build_role_prompt
+from .prompts import LLM_ACTION_PROMPT
+
+
+MEMORY_EXTRACTION_PROMPT = """
+You extract safe long-term memories for an emotional companion robot.
+Return JSON only, no markdown.
+
+Schema:
+{
+  "memories": [
+    {
+      "memory_type": "preference|identity|relationship|habit|interaction_style|reminder",
+      "content": "short Chinese memory sentence",
+      "confidence": 0.0-1.0,
+      "reason": "why it should be remembered"
+    }
+  ]
+}
+
+Rules:
+- Save only stable user preferences, identity, important relationships, habits, reminders, or interaction style.
+- Do not save secrets, passwords, API keys, ID numbers, bank cards, exact addresses, precise location, medical diagnoses, illegal details, or crisis/self-harm content.
+- If nothing safe and useful should be remembered, return {"memories":[]}.
+"""
 
 
 class GPT(BaseLLM):
@@ -34,14 +58,23 @@ class GPT(BaseLLM):
             error(e, "Connect to LLM API Failed! Please check the API configuration")
             return False
 
-    def chat(self, message="", model=None, temperature=None, max_tokens=None, timeout=None, route_name="fast_chat"):
+    def chat(
+        self,
+        message="",
+        model=None,
+        temperature=None,
+        max_tokens=None,
+        timeout=None,
+        route_name="fast_chat",
+        extra_context=None,
+    ):
         route = get_model_route(route_name)
         model = model or route.model
         temperature = route.temperature if temperature is None else temperature
         max_tokens = max_tokens or route.max_tokens
         timeout = timeout or route.timeout_seconds
         messages = [
-            {"role": "system", "content": LLM_ROLE_PROMPT},
+            {"role": "system", "content": build_role_prompt(extra_context=extra_context)},
             {"role": "user", "content": LLM_ACTION_PROMPT + message},
         ]
         start_time = time.perf_counter()
@@ -82,3 +115,17 @@ class GPT(BaseLLM):
         logger.info(f"Voice: {voice}")
         response.stream_to_file(audio_path)
 
+    def extract_memories(self, user_text):
+        route = get_model_route("fallback_or_rag")
+        response = self.client.chat.completions.create(
+            model=route.model,
+            messages=[
+                {"role": "system", "content": MEMORY_EXTRACTION_PROMPT},
+                {"role": "user", "content": str(user_text or "")},
+            ],
+            temperature=0,
+            max_tokens=300,
+            timeout=route.timeout_seconds,
+            extra_body={"enable_thinking": route.enable_thinking},
+        )
+        return response.choices[0].message.content.strip()

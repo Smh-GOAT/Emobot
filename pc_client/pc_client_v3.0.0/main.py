@@ -15,6 +15,7 @@ from gpt import *
 from agent_core import AgentCore, ChatRequest
 from agent_core.config import get_database_url
 from agent_core.memory import MemoryStore, run_migrations
+from agent_core.prompt_loader import load_soul_prompt, save_soul_prompt
 
 
 blt = BluetoothClient()
@@ -88,7 +89,7 @@ class App(ctk.CTk):
         # ------------------------------------------------------------
         self.navigation_frame = ctk.CTkFrame(self, corner_radius=0)
         self.navigation_frame.grid(row=0, column=0, sticky="nsew")
-        self.navigation_frame.grid_rowconfigure(7, weight=1)
+        self.navigation_frame.grid_rowconfigure(8, weight=1)
 
         self.navigation_frame_label = ctk.CTkLabel(self.navigation_frame, text="  Desk-Emoji", image=self.logo_image,
                                                              compound="left", font=ctk.CTkFont(size=15, weight="bold"))
@@ -114,19 +115,24 @@ class App(ctk.CTk):
                                         image=self.api_icon, anchor="w", command=self.api_button_event)
         self.api_button.grid(row=4, column=0, sticky="ew")
 
+        self.memory_button = ctk.CTkButton(self.navigation_frame, corner_radius=0, height=40, border_spacing=10, text="人格/记忆",
+                                         fg_color="transparent", text_color=("gray10", "gray90"), hover_color=("gray70", "gray30"),
+                                         image=self.chat_image, anchor="w", command=self.memory_button_event)
+        self.memory_button.grid(row=5, column=0, sticky="ew")
+
         self.firmware_button = ctk.CTkButton(self.navigation_frame, corner_radius=0, height=40, border_spacing=10, text="固件",
                                              fg_color="transparent", text_color=("gray10", "gray90"), hover_color=("gray70", "gray30"),
                                              image=self.firmware_icon, anchor="w", command=self.firmware_button_event)
-        self.firmware_button.grid(row=5, column=0, sticky="ew")
+        self.firmware_button.grid(row=6, column=0, sticky="ew")
 
         self.help_button = ctk.CTkButton(self.navigation_frame, corner_radius=0, height=40, border_spacing=10, text="帮助",
                                          fg_color="transparent", text_color=("gray10", "gray90"), hover_color=("gray70", "gray30"),
                                          image=self.help_icon, anchor="w", command=self.help_button_event)
-        self.help_button.grid(row=6, column=0, sticky="ew")
+        self.help_button.grid(row=7, column=0, sticky="ew")
 
         self.appearance_mode_menu = ctk.CTkOptionMenu(self.navigation_frame, values=["System", "Light", "Dark"],
                                                       command=self.change_appearance_mode_event)
-        self.appearance_mode_menu.grid(row=7, column=0, padx=20, pady=20, sticky="s")
+        self.appearance_mode_menu.grid(row=8, column=0, padx=20, pady=20, sticky="s")
 
         # ------------------------------------------------------------
         # Create Chat Frame
@@ -368,6 +374,71 @@ class App(ctk.CTk):
         self.openai_api_connect_button.grid(row=2, column=1, padx=20, pady=10)
 
         # ------------------------------------------------------------
+        # Create Persona & Memory Frame
+        # ------------------------------------------------------------
+        self.memory_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.memory_frame.grid_columnconfigure(0, weight=1)
+
+        self.memory_tabview = ctk.CTkTabview(self.memory_frame)
+        self.memory_tabview.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+        self.memory_tabview.add("人格")
+        self.soul_tab = self.memory_tabview.tab("人格")
+        self.soul_tab.grid_columnconfigure(0, weight=1)
+
+        self.soul_help_label = ctk.CTkLabel(
+            self.soul_tab,
+            text="编辑 SOUL.md：影响 Emobot 的人格气质。安全边界不可在前端修改。",
+            anchor="w",
+            justify="left",
+            wraplength=430,
+        )
+        self.soul_help_label.grid(row=0, column=0, padx=20, pady=(20, 5), sticky="ew")
+
+        self.soul_textbox = ctk.CTkTextbox(self.soul_tab, width=470, height=260)
+        self.soul_textbox.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+
+        self.soul_status_label = ctk.CTkLabel(self.soul_tab, text="", anchor="w")
+        self.soul_status_label.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
+
+        self.soul_button_frame = ctk.CTkFrame(self.soul_tab, fg_color="transparent")
+        self.soul_button_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.soul_button_frame.grid_columnconfigure(0, weight=1)
+        self.soul_load_button = ctk.CTkButton(self.soul_button_frame, text="重新加载", command=self.load_soul_editor)
+        self.soul_load_button.grid(row=0, column=0, padx=(0, 10), sticky="w")
+        self.soul_save_button = ctk.CTkButton(self.soul_button_frame, text="保存人格", command=self.save_soul_editor)
+        self.soul_save_button.grid(row=0, column=1, sticky="e")
+
+        self.memory_tabview.add("长期记忆")
+        self.long_memory_tab = self.memory_tabview.tab("长期记忆")
+        self.long_memory_tab.grid_columnconfigure(0, weight=1)
+        self.long_memory_tab.grid_columnconfigure(1, weight=1)
+
+        self.memory_list_textbox = ctk.CTkTextbox(self.long_memory_tab, width=470, height=160)
+        self.memory_list_textbox.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="nsew")
+
+        self.memory_id_entry = ctk.CTkEntry(self.long_memory_tab, placeholder_text="Memory ID（修改/删除时填写）")
+        self.memory_id_entry.grid(row=1, column=0, columnspan=2, padx=20, pady=5, sticky="ew")
+
+        self.memory_type_entry = ctk.CTkEntry(self.long_memory_tab, placeholder_text="类型：preference / identity / relationship / interaction_style")
+        self.memory_type_entry.grid(row=2, column=0, columnspan=2, padx=20, pady=5, sticky="ew")
+
+        self.memory_content_textbox = ctk.CTkTextbox(self.long_memory_tab, width=470, height=80)
+        self.memory_content_textbox.grid(row=3, column=0, columnspan=2, padx=20, pady=5, sticky="ew")
+
+        self.memory_status_label = ctk.CTkLabel(self.long_memory_tab, text="", anchor="w")
+        self.memory_status_label.grid(row=4, column=0, columnspan=2, padx=20, pady=5, sticky="ew")
+
+        self.memory_refresh_button = ctk.CTkButton(self.long_memory_tab, text="刷新", command=self.refresh_memories)
+        self.memory_refresh_button.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
+        self.memory_add_button = ctk.CTkButton(self.long_memory_tab, text="新增记忆", command=self.add_memory_from_editor)
+        self.memory_add_button.grid(row=5, column=1, padx=20, pady=10, sticky="ew")
+        self.memory_update_button = ctk.CTkButton(self.long_memory_tab, text="修改记忆", command=self.update_memory_from_editor)
+        self.memory_update_button.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
+        self.memory_delete_button = ctk.CTkButton(self.long_memory_tab, text="删除记忆", command=self.delete_memory_from_editor)
+        self.memory_delete_button.grid(row=6, column=1, padx=20, pady=10, sticky="ew")
+
+        # ------------------------------------------------------------
         # Create Firmware Frame
         # ------------------------------------------------------------
         self.firmware_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
@@ -448,6 +519,7 @@ class App(ctk.CTk):
         self.act_button.configure(fg_color=("gray75", "gray25") if name == "act" else "transparent")
         self.connect_button.configure(fg_color=("gray75", "gray25") if name == "connect" else "transparent")
         self.api_button.configure(fg_color=("gray75", "gray25") if name == "api" else "transparent")
+        self.memory_button.configure(fg_color=("gray75", "gray25") if name == "memory" else "transparent")
         self.firmware_button.configure(fg_color=("gray75", "gray25") if name == "firmware" else "transparent")
         self.help_button.configure(fg_color=("gray75", "gray25") if name == "help" else "transparent")
 
@@ -467,6 +539,10 @@ class App(ctk.CTk):
             self.api_frame.grid(row=0, column=1, sticky="nsew")
         else:
             self.api_frame.grid_forget()
+        if name == "memory":
+            self.memory_frame.grid(row=0, column=1, sticky="nsew")
+        else:
+            self.memory_frame.grid_forget()
         if name == "firmware":
             self.firmware_frame.grid(row=0, column=1, sticky="nsew")
         else:
@@ -581,6 +657,108 @@ class App(ctk.CTk):
         else:
             self.api_connected = False
             self.openai_api_connect_flag_label.configure(text="连接失败", text_color="red")
+
+    def memory_button_event(self):
+        self.select_frame_by_name("memory")
+        self.load_soul_editor()
+        self.refresh_memories()
+
+    def load_soul_editor(self):
+        try:
+            self.soul_textbox.delete("1.0", tk.END)
+            self.soul_textbox.insert("1.0", load_soul_prompt())
+            self.soul_status_label.configure(text="人格已加载", text_color="green")
+        except Exception as e:
+            self.soul_status_label.configure(text=f"加载失败：{e}", text_color="red")
+
+    def save_soul_editor(self):
+        try:
+            content = self.soul_textbox.get("1.0", tk.END).strip()
+            save_soul_prompt(content)
+            self.soul_status_label.configure(text="人格已保存，下一轮对话生效", text_color="green")
+        except Exception as e:
+            self.soul_status_label.configure(text=f"保存失败：{e}", text_color="red")
+
+    def refresh_memories(self):
+        self.memory_list_textbox.delete("1.0", tk.END)
+        store = agent.memory_store
+        if not store:
+            self.memory_list_textbox.insert("1.0", "DATABASE_URL 未配置或数据库未连接，长期记忆不可用。")
+            self.memory_status_label.configure(text="长期记忆未连接", text_color="orange")
+            return
+        try:
+            memories = store.list_memories("local_user", limit=50)
+            if not memories:
+                self.memory_list_textbox.insert("1.0", "暂无长期记忆。")
+            else:
+                lines = [
+                    f"{memory.id} | {memory.type} | {memory.content}"
+                    for memory in memories
+                ]
+                self.memory_list_textbox.insert("1.0", "\n".join(lines))
+            self.memory_status_label.configure(text=f"已加载 {len(memories)} 条记忆", text_color="green")
+        except Exception as e:
+            self.memory_status_label.configure(text=f"刷新失败：{e}", text_color="red")
+
+    def add_memory_from_editor(self):
+        store = agent.memory_store
+        if not store:
+            self.memory_status_label.configure(text="长期记忆未连接", text_color="orange")
+            return
+        memory_type = self.memory_type_entry.get().strip() or "preference"
+        content = self.memory_content_textbox.get("1.0", tk.END).strip()
+        if not content:
+            self.memory_status_label.configure(text="记忆内容不能为空", text_color="red")
+            return
+        try:
+            store.ensure_user("local_user")
+            memory_id = store.add_memory("local_user", memory_type, content, metadata={"source": "pc_client_editor"})
+            self.memory_id_entry.delete(0, tk.END)
+            self.memory_id_entry.insert(0, str(memory_id))
+            self.memory_status_label.configure(text="记忆已新增", text_color="green")
+            self.refresh_memories()
+        except Exception as e:
+            self.memory_status_label.configure(text=f"新增失败：{e}", text_color="red")
+
+    def update_memory_from_editor(self):
+        store = agent.memory_store
+        if not store:
+            self.memory_status_label.configure(text="长期记忆未连接", text_color="orange")
+            return
+        memory_id = self.memory_id_entry.get().strip()
+        content = self.memory_content_textbox.get("1.0", tk.END).strip()
+        if not memory_id or not content:
+            self.memory_status_label.configure(text="Memory ID 和内容不能为空", text_color="red")
+            return
+        memory_type = self.memory_type_entry.get().strip() or None
+        try:
+            ok = store.update_memory(memory_id, memory_type=memory_type, content=content)
+            self.memory_status_label.configure(
+                text="记忆已修改" if ok else "没有找到可修改的记忆",
+                text_color="green" if ok else "orange",
+            )
+            self.refresh_memories()
+        except Exception as e:
+            self.memory_status_label.configure(text=f"修改失败：{e}", text_color="red")
+
+    def delete_memory_from_editor(self):
+        store = agent.memory_store
+        if not store:
+            self.memory_status_label.configure(text="长期记忆未连接", text_color="orange")
+            return
+        memory_id = self.memory_id_entry.get().strip()
+        if not memory_id:
+            self.memory_status_label.configure(text="Memory ID 不能为空", text_color="red")
+            return
+        try:
+            ok = store.delete_memory(memory_id)
+            self.memory_status_label.configure(
+                text="记忆已删除" if ok else "没有找到可删除的记忆",
+                text_color="green" if ok else "orange",
+            )
+            self.refresh_memories()
+        except Exception as e:
+            self.memory_status_label.configure(text=f"删除失败：{e}", text_color="red")
 
     def firmware_button_event(self):
         self.select_frame_by_name("firmware")

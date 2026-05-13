@@ -20,6 +20,16 @@ def get_database_url():
     return normalize_database_url(os.getenv("DATABASE_URL", ""))
 
 
+def get_embedding_config():
+    load_env()
+    return {
+        "api_url": os.getenv("EMBEDDING_API_URL", ""),
+        "api_key": os.getenv("EMBEDDING_API_KEY", ""),
+        "model": os.getenv("EMBEDDING_MODEL", ""),
+        "dim": int(os.getenv("EMBEDDING_DIM", "0") or 0),
+    }
+
+
 def normalize_database_url(url):
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+psycopg://", 1)

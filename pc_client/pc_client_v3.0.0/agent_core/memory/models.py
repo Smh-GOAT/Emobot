@@ -89,8 +89,10 @@ class KnowledgeDocument(Base):
     id = uuid_column()
     source = Column(Text, nullable=False)
     title = Column(Text)
+    content_hash = Column(Text)
     metadata_json = Column("metadata", JSONB, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class KnowledgeChunk(Base):
@@ -100,6 +102,8 @@ class KnowledgeChunk(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("knowledge_documents.id"))
     title = Column(Text)
     content = Column(Text, nullable=False)
+    content_hash = Column(Text)
+    chunk_index = Column(Integer)
     metadata_json = Column("metadata", JSONB, nullable=False, server_default="{}")
     embedding = Column(Vector)
     search_tsv = Column(TSVECTOR)
@@ -128,4 +132,3 @@ class ActionLog(Base):
     actions = Column(JSONB, nullable=False)
     status = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
