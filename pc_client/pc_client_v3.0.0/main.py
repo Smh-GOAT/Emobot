@@ -16,6 +16,7 @@ from agent_core import AgentCore, ChatRequest
 from agent_core.config import get_database_url
 from agent_core.memory import MemoryStore, run_migrations
 from agent_core.prompt_loader import load_soul_prompt, save_soul_prompt
+from agent_core.runtime_preferences import get_reply_language_label, set_reply_language
 
 
 blt = BluetoothClient()
@@ -153,8 +154,17 @@ class App(ctk.CTk):
         self.textbox.grid(row=0, column=0, columnspan=3, padx=(20, 20), pady=(20, 10), sticky="nsew")
 
         self.chat_msg = ctk.CTkEntry(self.text_chat_tab)
-        self.chat_msg.grid(row=1, column=0, columnspan=2, padx=20, pady=0, sticky="ew")
+        self.chat_msg.grid(row=1, column=0, padx=20, pady=0, sticky="ew")
         self.chat_msg.bind("<Return>", self.chat_msg_event)
+
+        self.language_menu = ctk.CTkOptionMenu(
+            self.text_chat_tab,
+            values=["中文", "English"],
+            command=self.reply_language_event,
+            width=120,
+        )
+        self.language_menu.grid(row=1, column=1, padx=20, pady=0, sticky="ew")
+        self.language_menu.set(get_reply_language_label())
 
         self.send_button = ctk.CTkButton(self.text_chat_tab, text="发送", height=40,
                                          command=self.chat_msg_event)
@@ -554,6 +564,11 @@ class App(ctk.CTk):
 
     def change_appearance_mode_event(self, new_appearance_mode):
         ctk.set_appearance_mode(new_appearance_mode)
+
+    def reply_language_event(self, language_label):
+        language = "en" if language_label == "English" else "zh"
+        set_reply_language(language)
+        self.print_textbox(f"系统:\t回复语言已切换为 {language_label}\n")
 
     def chat(self, question):
         try:

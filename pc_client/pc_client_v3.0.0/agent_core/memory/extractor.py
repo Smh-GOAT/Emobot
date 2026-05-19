@@ -126,13 +126,33 @@ def contains_sensitive_information(text):
 
 def classify_memory_command(text):
     normalized = str(text or "").strip()
+    lowered = normalized.lower()
     if not normalized:
         return {"command": None, "query": ""}
+    name_markers = ("我的名字", "我叫什么", "remember my name", "know my name", "my name")
+    if any(marker in lowered for marker in ("do you remember", "what do you remember", "what do you know about me", "show memories", "my memories")):
+        query = "name" if any(marker in lowered for marker in name_markers) else ""
+        return {"command": "list", "query": query}
     if any(marker in normalized for marker in ("你记得我什么", "你记住了什么", "查看记忆", "我的记忆", "你知道我什么")):
-        return {"command": "list", "query": ""}
-    if "忘记" in normalized or "删掉记忆" in normalized or "删除记忆" in normalized:
+        query = "name" if any(marker in normalized for marker in ("我的名字", "我叫什么")) else ""
+        return {"command": "list", "query": query}
+    if "忘记" in normalized or "删掉记忆" in normalized or "删除记忆" in normalized or "forget" in lowered or "delete memory" in lowered or "remove memory" in lowered:
         query = normalized
-        for marker in ("请", "帮我", "把", "这件事", "忘记", "删掉记忆", "删除记忆", "关于"):
+        for marker in (
+            "请",
+            "帮我",
+            "把",
+            "这件事",
+            "忘记",
+            "删掉记忆",
+            "删除记忆",
+            "关于",
+            "please",
+            "forget",
+            "delete memory",
+            "remove memory",
+            "about",
+        ):
             query = query.replace(marker, "")
         return {"command": "forget", "query": query.strip()}
     return {"command": None, "query": ""}

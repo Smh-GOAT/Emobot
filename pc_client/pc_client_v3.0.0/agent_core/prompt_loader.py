@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from .runtime_preferences import build_reply_language_prompt
+
 
 PROMPT_ASSET_DIR = Path(__file__).with_name("prompt_assets")
 PROMPT_ASSET_ORDER = (
@@ -29,6 +31,7 @@ def load_soul_prompt():
 
 def build_role_prompt(extra_context=None):
     sections = [load_prompt_asset(name) for name in PROMPT_ASSET_ORDER]
+    sections.append(build_reply_language_prompt())
     if extra_context:
         sections.append("# DYNAMIC_CONTEXT\n\n" + str(extra_context).strip())
     return "\n\n---\n\n".join(section for section in sections if section).strip()

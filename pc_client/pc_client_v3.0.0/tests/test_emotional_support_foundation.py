@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from agent_core.prompt_loader import PROMPT_ASSET_ORDER, build_role_prompt, load_soul_prompt
+from agent_core.runtime_preferences import build_reply_language_user_instruction, set_reply_language
 
 
 class EmotionalSupportFoundationTests(unittest.TestCase):
@@ -25,6 +26,17 @@ class EmotionalSupportFoundationTests(unittest.TestCase):
 
     def test_prompt_asset_order_keeps_safety_first(self):
         self.assertEqual(PROMPT_ASSET_ORDER[0], "SAFETY_BOUNDARY.md")
+
+    def test_runtime_reply_language_can_switch_to_english(self):
+        try:
+            set_reply_language("en")
+            prompt = build_role_prompt()
+
+            self.assertIn("# RUNTIME_REPLY_LANGUAGE", prompt)
+            self.assertIn("Reply in English for this session", prompt)
+            self.assertIn("MUST be in English only", build_reply_language_user_instruction())
+        finally:
+            set_reply_language("zh")
 
     def test_comfort_golden_cases_are_eval_assets_not_database_seed(self):
         cases_path = Path(__file__).resolve().parents[1] / "agent_core" / "evals" / "comfort_golden_cases.jsonl"

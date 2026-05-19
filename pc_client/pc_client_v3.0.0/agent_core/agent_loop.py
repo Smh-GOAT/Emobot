@@ -1,10 +1,12 @@
 import inspect
+import re
 import time
 
 from .actions import normalize_response, validate_actions
 from .memory.extractor import classify_memory_command, extract_memory_candidates_with_llm
 from .memory.hybrid_retriever import HybridRetriever
 from .model_router import get_model_route
+from .runtime_preferences import get_reply_language
 from .schemas import ChatRequest, ChatResponse
 
 
@@ -113,24 +115,29 @@ class AgentCore:
                 memories = self.memory_store.list_memories(request.user_id, limit=10)
             except Exception:
                 return None
-            if not memories:
-                answer = "我现在还没有长期记忆。"
-            else:
-                snippets = [memory.content for memory in memories[:5]]
-                answer = "我记得：" + "；".join(snippets)
+            answer = _format_memory_list_answer(memories, query=command["query"])
             return _direct_response(answer, route)
         if command["command"] == "forget":
             query = command["query"]
             if not query:
-                return _direct_response("可以，但请告诉我要忘记哪件事。", route)
+                return _direct_response(_localized_text(
+                    zh="可以，但请告诉我要忘记哪件事。",
+                    en="Sure, but please tell me what you want me to forget.",
+                ), route)
             try:
                 deleted = self.memory_store.delete_memories_by_query(request.user_id, query, limit=10)
             except Exception:
                 return None
             if deleted:
-                answer = "好，我已经忘记这件事了。"
+                answer = _localized_text(
+                    zh="好，我已经忘记这件事了。",
+                    en="Okay, I've forgotten that.",
+                )
             else:
-                answer = "我没找到对应记忆，可以说得更具体一点。"
+                answer = _localized_text(
+                    zh="我没找到对应记忆，可以说得更具体一点。",
+                    en="I couldn't find that memory. Could you be more specific?",
+                )
             return _direct_response(answer, route)
         return None
 
@@ -244,6 +251,13 @@ MEMORY_QUERY_TERMS = (
     "我叫什么",
     "我是谁",
     "偏好",
+    "remember",
+    "memory",
+    "memories",
+    "forget",
+    "my name",
+    "know my name",
+    "what do you know",
 )
 
 
@@ -265,3 +279,81 @@ def _direct_response(answer, route):
         latency_ms=0,
         raw_response=None,
     )
+
+
+def _format_memory_list_answer(memories, query=""):
+    filtered = list(memories)
+    if query == "name":
+        filtered = [
+            memory
+            for memory in filtered
+            if memory.type == "identity"
+            or "我叫" in memory.content
+            or "名字" in memory.content
+            or "call me" in memory.content.lower()
+            or "my name" in memory.content.lower()
+        ]
+    if not filtered:
+        return _localized_text(
+            zh="我现在还没有记住你的名字。" if query == "name" else "我现在还没有长期记忆。",
+            en="I don't have your name in memory yet." if query == "name" else "I don't have any long-term memories yet.",
+        )
+    if query == "name":
+        if get_reply_language() == "en":
+            return _format_name_memory_en(filtered[0].content)
+        return _format_name_memory_zh(filtered[0].content)
+    snippets = [_clean_memory_for_reply(memory.content) for memory in filtered[:5]]
+    if get_reply_language() == "en":
+        return "I remember: " + "; ".join(snippets)
+    return "我记得：" + "；".join(snippets)
+
+
+def _localized_text(zh, en):
+    return en if get_reply_language() == "en" else zh
+
+
+def _format_name_memory_en(content):
+    name, nickname = _extract_name_parts(content)
+    if name and nickname and nickname != name:
+        return f"Yes, I remember. Your name is {name}, and I can call you {nickname}."
+    if name:
+        return f"Yes, I remember. Your name is {name}."
+    return "Yes, I remember your name, but I only have it stored in my original note."
+
+
+def _format_name_memory_zh(content):
+    name, nickname = _extract_name_parts(content)
+    if name and nickname and nickname != name:
+        return f"我记得，你叫{name}，我可以叫你{nickname}。"
+    if name:
+        return f"我记得，你叫{name}。"
+    return "我记得你的名字，但这条记忆还需要整理一下。"
+
+
+def _extract_name_parts(content):
+    text = str(content or "").strip()
+    name = _first_match(text, (r"我叫([^，,。；;\s]+)", r"my name is\s+([^,.。；;]+)", r"call me\s+([^,.。；;]+)"))
+    nickname = _first_match(text, (r"叫我([^，,。；;\s]+)", r"call me\s+([^,.。；;]+)"))
+    return name, nickname
+
+
+def _first_match(text, patterns):
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _clean_memory_for_reply(content):
+    text = str(content or "").strip()
+    replacements = (
+        ("用户希望", "你希望"),
+        ("用户喜欢", "你喜欢"),
+        ("用户不喜欢", "你不喜欢"),
+        ("用户的", "你的"),
+        ("用户", "你"),
+    )
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text

@@ -6,6 +6,7 @@ from common import BaseLLM, error, logger
 from .model_router import get_model_route
 from .prompt_loader import build_role_prompt
 from .prompts import LLM_ACTION_PROMPT
+from .runtime_preferences import build_reply_language_user_instruction
 
 
 MEMORY_EXTRACTION_PROMPT = """
@@ -75,7 +76,7 @@ class GPT(BaseLLM):
         timeout = timeout or route.timeout_seconds
         messages = [
             {"role": "system", "content": build_role_prompt(extra_context=extra_context)},
-            {"role": "user", "content": LLM_ACTION_PROMPT + message},
+            {"role": "user", "content": LLM_ACTION_PROMPT + build_reply_language_user_instruction() + message},
         ]
         start_time = time.perf_counter()
         response = self.client.chat.completions.create(

@@ -6,6 +6,7 @@ from agent_core.memory.extractor import (
     contains_sensitive_information,
     extract_memory_candidates_with_llm,
 )
+from agent_core.runtime_preferences import set_reply_language
 
 
 class FakeMemory:
@@ -91,6 +92,8 @@ class Phase25MemoryManagementTests(unittest.TestCase):
 
     def test_memory_command_classifier_detects_list_and_forget(self):
         self.assertEqual(classify_memory_command("你记得我什么")["command"], "list")
+        self.assertEqual(classify_memory_command("Do you remember my name?")["command"], "list")
+        self.assertEqual(classify_memory_command("Do you remember my name?")["query"], "name")
         forget = classify_memory_command("请忘记我喜欢猫")
 
         self.assertEqual(forget["command"], "forget")
@@ -101,7 +104,7 @@ class Phase25MemoryManagementTests(unittest.TestCase):
         store = FakeMemoryStore()
         response = AgentCore(llm, memory_store=store).chat(ChatRequest(text="你记得我什么"))
 
-        self.assertIn("用户喜欢猫", response.answer)
+        self.assertIn("你喜欢猫", response.answer)
         self.assertEqual(llm.calls, [])
         self.assertTrue(any(call[0] == "add_message" and call[1] == "assistant" for call in store.calls))
 
@@ -113,6 +116,24 @@ class Phase25MemoryManagementTests(unittest.TestCase):
         self.assertIn("已经忘记", response.answer)
         self.assertEqual(llm.calls, [])
         self.assertEqual(store.memories, [])
+
+    def test_agent_core_answers_english_memory_command_in_english(self):
+        try:
+            set_reply_language("en")
+            llm = FakeChatLLM()
+            store = FakeMemoryStore()
+            store.memories = [FakeMemory("我叫沈墨涵，你可以叫我墨涵。", "identity")]
+
+            response = AgentCore(llm, memory_store=store).chat(ChatRequest(text="Do you remember my name?"))
+
+            self.assertIn("Yes, I remember", response.answer)
+            self.assertIn("Your name is", response.answer)
+            self.assertIn("沈墨涵", response.answer)
+            self.assertIn("墨涵", response.answer)
+            self.assertNotIn("我叫", response.answer)
+            self.assertEqual(llm.calls, [])
+        finally:
+            set_reply_language("zh")
 
 
 if __name__ == "__main__":
